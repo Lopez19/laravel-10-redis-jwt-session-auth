@@ -3,7 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Http\Middleware\EnsureTokenIsValid;
+use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class AuthController extends Controller
 {
@@ -40,7 +45,23 @@ class AuthController extends Controller
      */
     public function me()
     {
-        return response()->json(auth()->user());
+        try {
+            $userId = Auth::user()->id;
+            $key = "auth_user_$userId";
+            $user = Cache::store('redis')->rememberForever($key, function () {
+                return User::findOrFail(Auth::user()->id);
+            });
+
+            return response()->json(['user' => $user], 200);
+        } catch (Throwable $e) {
+            Log::channel('auth')->error('Error auth me', [
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+
+            return response()->json(['message' => 'Error while get user data. Try again later.'], 401);
+        }
     }
 
     /**
